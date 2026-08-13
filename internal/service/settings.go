@@ -347,6 +347,7 @@ type SettingsData struct {
 	AutoDarkTheme             string `json:"autoDarkTheme"`
 	ClaudeNotificationEnabled bool   `json:"claudeNotificationEnabled"`
 	ClaudeNotificationType    string `json:"claudeNotificationType"`
+	PortBindings              *[]config.PortBinding `json:"portBindings"`
 }
 
 // SaveSettings saves all settings in a single operation to avoid database lock issues
@@ -362,6 +363,15 @@ func (s *SettingsService) SaveSettings(settingsJSON string) error {
 		settings.CloseWindowBehavior != "minimize" &&
 		settings.CloseWindowBehavior != "ask" {
 		return fmt.Errorf("invalid close window behavior: %s", settings.CloseWindowBehavior)
+	}
+	if settings.PortBindings != nil {
+		candidate := config.DefaultConfig()
+		candidate.Port = s.config.GetPort()
+		candidate.Endpoints = s.config.GetEndpoints()
+		candidate.PortBindings = *settings.PortBindings
+		if err := candidate.Validate(); err != nil {
+			return err
+		}
 	}
 
 	// Update all settings in memory
@@ -389,6 +399,9 @@ func (s *SettingsService) SaveSettings(settingsJSON string) error {
 		proxyCfg = &config.ProxyConfig{URL: settings.ProxyURL}
 	}
 	s.config.UpdateProxy(proxyCfg)
+	if settings.PortBindings != nil {
+		s.config.UpdatePortBindings(*settings.PortBindings)
+	}
 
 	// Update Claude notification config
 	// Validate notification type

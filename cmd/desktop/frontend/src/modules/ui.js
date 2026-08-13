@@ -755,6 +755,14 @@ export function initUI() {
                         </div>
                         <input type="text" id="settingsProxyUrl" placeholder="${t('settings.proxyUrlPlaceholder')}">
                     </div>
+                    <div class="form-group client-port-bindings">
+                        <div class="form-label-row">
+                            <label>客户端端口分配</label>
+                            <small class="form-help">保存后重启应用生效。Claude Code 使用基础地址，Codex 使用 /v1。</small>
+                        </div>
+                        <div id="settingsPortBindings" class="port-binding-list"></div>
+                        <button type="button" class="btn btn-secondary port-binding-add" onclick="window.addPortBinding()">添加端口</button>
+                    </div>
                     <div class="form-group">
                         <div class="form-label-row">
                             <label><span class="required">*</span>${t('update.autoCheck')}</label>

@@ -161,6 +161,8 @@ async function loadCurrentSettings() {
         const configStr = await window.go.main.App.GetConfig();
         const config = JSON.parse(configStr);
 
+        renderPortBindings(config.portBindings || [], config.endpoints || []);
+
         // Set close window behavior
         const closeWindowBehavior = config.closeWindowBehavior || 'ask';
         const behaviorSelect = document.getElementById('settingsCloseWindowBehavior');
@@ -318,6 +320,8 @@ export async function saveSettings() {
         const configStr = await window.go.main.App.GetConfig();
         const config = JSON.parse(configStr);
 
+        const portBindings = collectPortBindings();
+
         // Use batch save to avoid database lock issues
         const settings = {
             closeWindowBehavior: closeWindowBehavior,
@@ -325,7 +329,8 @@ export async function saveSettings() {
             theme: theme,
             themeAuto: themeAuto,
             claudeNotificationEnabled: claudeNotificationEnabled,
-            claudeNotificationType: claudeNotificationType
+            claudeNotificationType: claudeNotificationType,
+            portBindings: portBindings
         };
         await window.go.main.App.SaveSettings(JSON.stringify(settings));
 
@@ -351,6 +356,57 @@ export async function saveSettings() {
         console.error('Failed to save settings:', error);
         showNotification(t('settings.saveFailed') + ': ' + error, 'error');
     }
+}
+
+function renderPortBindings(bindings, endpoints) {
+    const container = document.getElementById('settingsPortBindings');
+    if (!container) return;
+    container.innerHTML = '';
+    bindings.forEach(binding => addPortBindingRow(binding, endpoints));
+}
+
+function addPortBindingRow(binding = {}, endpoints = []) {
+    const container = document.getElementById('settingsPortBindings');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'port-binding-row';
+    const options = endpoints.map(endpoint => `<option value="${escapeHtml(endpoint.name)}" ${endpoint.name === binding.endpoint ? 'selected' : ''}>${escapeHtml(endpoint.name)}</option>`).join('');
+    row.innerHTML = `
+        <input class="port-binding-port" type="number" min="1" max="65535" value="${Number(binding.port) || ''}" placeholder="端口">
+        <select class="port-binding-endpoint">${options}</select>
+        <button type="button" class="port-binding-remove" title="删除端口" aria-label="删除端口">&times;</button>`;
+    row.querySelector('.port-binding-remove').addEventListener('click', () => row.remove());
+    container.appendChild(row);
+}
+
+function collectPortBindings() {
+    const rows = document.querySelectorAll('.port-binding-row');
+    const bindings = Array.from(rows).map(row => ({
+        port: Number(row.querySelector('.port-binding-port').value),
+        endpoint: row.querySelector('.port-binding-endpoint').value
+    }));
+    for (const binding of bindings) {
+        if (!Number.isInteger(binding.port) || binding.port < 1 || binding.port > 65535 || !binding.endpoint) {
+            throw new Error('端口必须在 1-65535 之间，且必须选择端点');
+        }
+    }
+    if (new Set(bindings.map(binding => binding.port)).size !== bindings.length) {
+        throw new Error('端口不能重复');
+    }
+    return bindings;
+}
+
+function escapeHtml(value) {
+    const node = document.createElement('div');
+    node.textContent = value || '';
+    return node.innerHTML;
+}
+
+export async function addPortBinding() {
+    const config = JSON.parse(await window.go.main.App.GetConfig());
+    const usedPorts = collectPortBindings().map(binding => binding.port);
+    const defaultPort = usedPorts.includes(3001) ? 3002 : 3001;
+    addPortBindingRow({ port: defaultPort, endpoint: config.endpoints[0]?.name || '' }, config.endpoints || []);
 }
 
 // Show notification (reuse from webdav.js if available, or implement simple version)

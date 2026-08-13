@@ -3068,6 +3068,48 @@ body {
     padding: 25px 30px 15px 30px;
 }
 
+.client-port-bindings {
+    border-top: 1px solid var(--border-color, #e9ecef);
+    padding-top: 18px;
+}
+
+.port-binding-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.port-binding-row {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr) 32px;
+    gap: 8px;
+    align-items: center;
+}
+
+.port-binding-remove {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border-color, #d9dce1);
+    background: transparent;
+    color: var(--text-secondary, #667085);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.port-binding-remove:hover {
+    color: #c62828;
+    border-color: #e9a2a2;
+    background: #fff4f4;
+}
+
+.port-binding-add {
+    margin-top: 10px;
+    padding: 7px 12px;
+    font-size: 13px;
+}
+
 /* Auto Theme Config Modal Styles */
 #autoThemeConfigModal {
     /* 子弹窗不需要重复的模糊效果 */

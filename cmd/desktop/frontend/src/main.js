@@ -11,7 +11,7 @@ import { showDataSyncDialog } from './modules/webdav.js'
 import { initTips } from './modules/tips.js'
 import { initTerminal } from './modules/terminal.js'
 import { initSession } from './modules/session.js'
-import { showSettingsModal, closeSettingsModal, saveSettings, applyTheme, initTheme, showAutoThemeConfigModal, closeAutoThemeConfigModal, saveAutoThemeConfig } from './modules/settings.js'
+import { showSettingsModal, closeSettingsModal, saveSettings, addPortBinding, applyTheme, initTheme, showAutoThemeConfigModal, closeAutoThemeConfigModal, saveAutoThemeConfig } from './modules/settings.js'
 import { checkUpdatesOnStartup, checkForUpdates, initUpdateSettings } from './modules/updater.js'
 import { initBroadcast } from './modules/broadcast.js'
 import { initSponsor, showSponsorModal, closeSponsorModal, openSponsorLink } from './modules/sponsor.js'
@@ -265,6 +265,7 @@ window.clearAllFilters = clearAllFilters;
 window.showSettingsModal = showSettingsModal;
 window.closeSettingsModal = closeSettingsModal;
 window.saveSettings = saveSettings;
+window.addPortBinding = addPortBinding;
 window.showAutoThemeConfigModal = showAutoThemeConfigModal;
 window.closeAutoThemeConfigModal = closeAutoThemeConfigModal;
 window.saveAutoThemeConfig = saveAutoThemeConfig;

@@ -295,6 +295,14 @@ func (c *Config) GetPortBindings() []PortBinding {
 	return append([]PortBinding(nil), c.PortBindings...)
 }
 
+// UpdatePortBindings replaces listener bindings with a copy of the supplied list.
+func (c *Config) UpdatePortBindings(bindings []PortBinding) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.PortBindings = append([]PortBinding(nil), bindings...)
+}
+
+
 // GetLogLevel returns the configured log level (thread-safe)
 func (c *Config) GetLogLevel() int {
 	c.mu.RLock()
