@@ -38,6 +38,7 @@ type Proxy struct {
 	currentIndex      int
 	mu                sync.RWMutex
 	server            *http.Server
+	servers           []*http.Server
 	httpClient        *http.Client                       // Reusable HTTP client with connection pool
 	activeRequests    map[string]bool                    // tracks active requests by endpoint name
 	activeRequestsMu  sync.RWMutex                       // protects activeRequests map
@@ -122,13 +123,37 @@ func (p *Proxy) StartWithMux(customMux *http.ServeMux) error {
 	mux.HandleFunc("/health", p.handleHealth)
 	mux.HandleFunc("/stats", p.handleStats)
 
-	p.server = &http.Server{
-		Addr:              fmt.Sprintf(":%d", port),
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       5 * time.Minute,
-		WriteTimeout:      10 * time.Minute,
-		IdleTimeout:       120 * time.Second,
+	newServer := func(port int, handler http.Handler) *http.Server {
+		return &http.Server{
+			Addr:              fmt.Sprintf(":%d", port),
+			Handler:           handler,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       5 * time.Minute,
+			WriteTimeout:      10 * time.Minute,
+			IdleTimeout:       120 * time.Second,
+		}
+	}
+	p.server = newServer(port, mux)
+	p.servers = []*http.Server{p.server}
+	for _, binding := range cfg.GetPortBindings() {
+		boundEndpoint := binding.Endpoint
+		boundMux := http.NewServeMux()
+		boundMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("X-CCN-Endpoint") == "" && r.Header.Get("X-Endpoint-Name") == "" {
+				r.Header.Set("X-CCN-Port-Endpoint", boundEndpoint)
+			}
+			muxHandler := mux.Handler(r)
+			muxHandler.ServeHTTP(w, r)
+		})
+		// HandleFunc above delegates all paths, including Web UI routes, to the primary mux.
+		server := newServer(binding.Port, boundMux)
+		p.servers = append(p.servers, server)
+		go func(s *http.Server) {
+			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Warn("listener %s stopped: %v", s.Addr, err)
+			}
+		}(server)
+		logger.Info("ccNexus additional listener on port %d -> endpoint %s", binding.Port, binding.Endpoint)
 	}
 
 	logger.Info("ccNexus starting on port %d", port)
@@ -139,10 +164,13 @@ func (p *Proxy) StartWithMux(customMux *http.ServeMux) error {
 
 // Stop stops the proxy server
 func (p *Proxy) Stop() error {
-	if p.server != nil {
-		return p.server.Close()
+	var firstErr error
+	for _, server := range p.servers {
+		if err := server.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	return nil
+	return firstErr
 }
 
 // getEnabledEndpoints returns only the enabled endpoints (thread-safe).

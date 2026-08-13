@@ -28,6 +28,7 @@ type proxyRequestContext struct {
 	modelOverride               string
 	useSpecificEndpoint         bool
 	refreshedCredentialAttempts map[int64]bool
+	portDefaultEndpoint        string
 }
 
 type endpointAttempt struct {
@@ -129,6 +130,16 @@ func (p *Proxy) newProxyRequestContext(w http.ResponseWriter, r *http.Request) (
 		logger.Warn("端点解析失败: %v", resolveErr)
 		writeInvalidRequestError(w, resolveErr.Error())
 		return nil, resolveErr
+	}
+	if specifiedEndpoint == nil {
+		if defaultName := strings.TrimSpace(r.Header.Get("X-CCN-Port-Endpoint")); defaultName != "" {
+			resolved, err := p.resolver.ResolveEndpointForPort(defaultName)
+			if err != nil {
+				writeInvalidRequestError(w, err.Error())
+				return nil, err
+			}
+			specifiedEndpoint = resolved
+		}
 	}
 
 	useSpecificEndpoint := specifiedEndpoint != nil

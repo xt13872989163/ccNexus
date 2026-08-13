@@ -155,3 +155,16 @@ func (r *EndpointResolver) findEndpointByName(name string, endpoints []config.En
 	}
 	return nil
 }
+
+// ResolveEndpointForPort resolves an endpoint selected by a listener port.
+// It is intentionally a fallback and should only be called after ResolveEndpoint.
+func (r *EndpointResolver) ResolveEndpointForPort(endpointName string) (*config.Endpoint, error) {
+	if strings.TrimSpace(endpointName) == "" {
+		return nil, nil
+	}
+	endpoint := r.findEndpointByName(endpointName, r.getEndpointsFunc())
+	if endpoint == nil {
+		return nil, fmt.Errorf("port default endpoint '%s' does not exist or is disabled", endpointName)
+	}
+	return endpoint, nil
+}

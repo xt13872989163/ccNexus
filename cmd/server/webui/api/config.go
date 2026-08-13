@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lich0821/ccNexus/internal/config"
 	"github.com/lich0821/ccNexus/internal/logger"
 )
 
@@ -98,16 +99,18 @@ func (h *Handler) handleResetBasicAuthPassword(w http.ResponseWriter, r *http.Re
 // getConfig returns the full configuration
 func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 	WriteSuccess(w, map[string]interface{}{
-		"port":     h.config.GetPort(),
-		"logLevel": h.config.GetLogLevel(),
+		"port":         h.config.GetPort(),
+		"portBindings": h.config.GetPortBindings(),
+		"logLevel":     h.config.GetLogLevel(),
 	})
 }
 
 // updateConfig updates the full configuration
 func (h *Handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Port     *int `json:"port"`
-		LogLevel *int `json:"logLevel"`
+		Port         *int                 `json:"port"`
+		PortBindings *[]config.PortBinding `json:"portBindings"`
+		LogLevel     *int                 `json:"logLevel"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -129,8 +132,18 @@ func (h *Handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "Invalid log level (must be 0-3)")
 		return
 	}
+	if req.PortBindings != nil {
+		candidate := config.DefaultConfig()
+		candidate.Port = h.config.GetPort()
+		candidate.Endpoints = h.config.GetEndpoints()
+		candidate.PortBindings = *req.PortBindings
+		if err := candidate.Validate(); err != nil {
+			WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 
-	if err := h.persistRuntimeConfig(req.Port, req.LogLevel); err != nil {
+	if err := h.persistRuntimeConfig(req.Port, req.LogLevel, req.PortBindings); err != nil {
 		logger.Error("Failed to save config: %v", err)
 		WriteError(w, http.StatusInternalServerError, "Failed to save configuration")
 		return
@@ -173,7 +186,7 @@ func (h *Handler) handleConfigPort(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := h.persistRuntimeConfig(&req.Port, nil); err != nil {
+		if err := h.persistRuntimeConfig(&req.Port, nil, nil); err != nil {
 			logger.Error("Failed to save config: %v", err)
 			WriteError(w, http.StatusInternalServerError, "Failed to save configuration")
 			return
@@ -210,7 +223,7 @@ func (h *Handler) handleConfigLogLevel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := h.persistRuntimeConfig(nil, &req.LogLevel); err != nil {
+		if err := h.persistRuntimeConfig(nil, &req.LogLevel, nil); err != nil {
 			logger.Error("Failed to save config: %v", err)
 			WriteError(w, http.StatusInternalServerError, "Failed to save configuration")
 			return
@@ -262,29 +275,41 @@ func (h *Handler) persistBasicAuth(enabled *bool, username, password string) err
 	return nil
 }
 
-func (h *Handler) persistRuntimeConfig(port, logLevel *int) error {
+func (h *Handler) persistRuntimeConfig(port, logLevel *int, bindings *[]config.PortBinding) error {
 	h.configMu.Lock()
 	defer h.configMu.Unlock()
 
 	oldPort := h.config.GetPort()
 	oldLogLevel := h.config.GetLogLevel()
+	oldBindings := h.config.GetPortBindings()
 	if port != nil {
 		h.config.UpdatePort(*port)
 	}
 	if logLevel != nil {
 		h.config.UpdateLogLevel(*logLevel)
 	}
+	if bindings != nil {
+		h.config.PortBindings = append([]config.PortBinding(nil), (*bindings)...)
+	}
 
-	values := make(map[string]string, 2)
+	values := make(map[string]string, 3)
 	if port != nil {
 		values["port"] = strconv.Itoa(*port)
 	}
 	if logLevel != nil {
 		values["logLevel"] = strconv.Itoa(*logLevel)
 	}
+	if bindings != nil {
+		encoded, err := json.Marshal(*bindings)
+		if err != nil {
+			return err
+		}
+		values["portBindings"] = string(encoded)
+	}
 	if err := h.storage.SetConfigs(values); err != nil {
 		h.config.UpdatePort(oldPort)
 		h.config.UpdateLogLevel(oldLogLevel)
+		h.config.PortBindings = oldBindings
 		return err
 	}
 	return nil

@@ -2,6 +2,22 @@
 
 ## 应用设置
 
+### 多端口与客户端
+
+`port` 是兼容旧配置的主端口。`portBindings` 可增加监听端口，并为每个端口指定默认 endpoint：
+
+```json
+{
+  "port": 3000,
+  "portBindings": [
+    { "port": 3001, "endpoint": "Claude Official" },
+    { "port": 3002, "endpoint": "Codex" }
+  ]
+}
+```
+
+Claude Code 使用 `http://127.0.0.1:3001`，Codex 使用 `http://127.0.0.1:3002/v1`。请求中的 `X-CCN-Endpoint`、`X-Endpoint-Name`、`@endpoint/model` 和 `?endpoint=` 选择器优先于端口默认 endpoint。
+
 | 设置项 | 说明 | 默认值 |
 |--------|------|--------|
 | 代理端口 | 本地代理监听端口 | `3000` |

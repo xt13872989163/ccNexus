@@ -154,9 +154,17 @@ type ProxyConfig struct {
 	URL string `json:"url"` // Proxy URL, e.g., http://127.0.0.1:7890 or socks5://127.0.0.1:1080
 }
 
+// PortBinding assigns a listener port to a default endpoint.
+// Explicit endpoint selectors in a request still take precedence.
+type PortBinding struct {
+	Port     int    `json:"port"`
+	Endpoint string `json:"endpoint"`
+}
+
 // Config represents the application configuration
 type Config struct {
 	Port                      int             `json:"port"`
+	PortBindings              []PortBinding   `json:"portBindings,omitempty"`
 	PortLocked                bool            `json:"-"` // CLI forced port, cannot be changed via API
 	BasicAuthEnabled          bool            `json:"basicAuthEnabled"`
 	BasicAuthUsername         string          `json:"basicAuthUsername"`
@@ -188,6 +196,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Port:                      3000,
+		PortBindings:              []PortBinding{},
 		BasicAuthEnabled:          true,
 		BasicAuthUsername:         "admin",
 		BasicAuthPassword:         "",
@@ -221,6 +230,23 @@ func (c *Config) Validate() error {
 
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("invalid port: %d", c.Port)
+	}
+	seenPorts := map[int]bool{c.Port: true}
+	seenEndpoints := make(map[string]bool)
+	for _, ep := range c.Endpoints {
+		seenEndpoints[strings.ToLower(strings.TrimSpace(ep.Name))] = true
+	}
+	for _, binding := range c.PortBindings {
+		if binding.Port < 1 || binding.Port > 65535 {
+			return fmt.Errorf("invalid port binding port: %d", binding.Port)
+		}
+		if seenPorts[binding.Port] {
+			return fmt.Errorf("duplicate port binding port: %d", binding.Port)
+		}
+		seenPorts[binding.Port] = true
+		if !seenEndpoints[strings.ToLower(strings.TrimSpace(binding.Endpoint))] {
+			return fmt.Errorf("port binding %d references unknown endpoint %q", binding.Port, binding.Endpoint)
+		}
 	}
 
 	if len(c.Endpoints) == 0 {
@@ -260,6 +286,13 @@ func (c *Config) GetPort() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.Port
+}
+
+// GetPortBindings returns a copy of listener bindings.
+func (c *Config) GetPortBindings() []PortBinding {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]PortBinding(nil), c.PortBindings...)
 }
 
 // GetLogLevel returns the configured log level (thread-safe)
@@ -621,6 +654,9 @@ func LoadFromStorage(storage StorageAdapter) (*Config, error) {
 	if config.Port == 0 {
 		config.Port = 3000
 	}
+	if bindings, err := storage.GetConfig("portBindings"); err == nil && bindings != "" {
+		_ = json.Unmarshal([]byte(bindings), &config.PortBindings)
+	}
 
 	if logLevelStr, err := storage.GetConfig("logLevel"); err == nil && logLevelStr != "" {
 		if logLevel, err := strconv.Atoi(logLevelStr); err == nil {
@@ -893,6 +929,13 @@ func (c *Config) SaveToStorage(storage StorageAdapter) error {
 	// Save app config
 	if err := storage.SetConfig("port", strconv.Itoa(c.Port)); err != nil {
 		return fmt.Errorf("failed to save port config: %w", err)
+	}
+	bindingsJSON, err := json.Marshal(c.PortBindings)
+	if err != nil {
+		return fmt.Errorf("failed to encode port bindings: %w", err)
+	}
+	if err := storage.SetConfig("portBindings", string(bindingsJSON)); err != nil {
+		return fmt.Errorf("failed to save port bindings config: %w", err)
 	}
 	if err := storage.SetConfig("logLevel", strconv.Itoa(c.LogLevel)); err != nil {
 		return fmt.Errorf("failed to save logLevel config: %w", err)
