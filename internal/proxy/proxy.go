@@ -142,7 +142,7 @@ func (p *Proxy) StartWithMux(customMux *http.ServeMux) error {
 			if r.Header.Get("X-CCN-Endpoint") == "" && r.Header.Get("X-Endpoint-Name") == "" {
 				r.Header.Set("X-CCN-Port-Endpoint", boundEndpoint)
 			}
-			muxHandler := mux.Handler(r)
+			muxHandler, _ := mux.Handler(r)
 			muxHandler.ServeHTTP(w, r)
 		})
 		// HandleFunc above delegates all paths, including Web UI routes, to the primary mux.
