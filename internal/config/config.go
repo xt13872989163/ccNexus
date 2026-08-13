@@ -231,7 +231,6 @@ func (c *Config) Validate() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("invalid port: %d", c.Port)
 	}
-	seenPorts := map[int]bool{c.Port: true}
 	seenEndpoints := make(map[string]bool)
 	for _, ep := range c.Endpoints {
 		seenEndpoints[strings.ToLower(strings.TrimSpace(ep.Name))] = true
@@ -240,10 +239,9 @@ func (c *Config) Validate() error {
 		if binding.Port < 1 || binding.Port > 65535 {
 			return fmt.Errorf("invalid port binding port: %d", binding.Port)
 		}
-		if seenPorts[binding.Port] {
+		if binding.Port == c.Port {
 			return fmt.Errorf("duplicate port binding port: %d", binding.Port)
 		}
-		seenPorts[binding.Port] = true
 		if !seenEndpoints[strings.ToLower(strings.TrimSpace(binding.Endpoint))] {
 			return fmt.Errorf("port binding %d references unknown endpoint %q", binding.Port, binding.Endpoint)
 		}

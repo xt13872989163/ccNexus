@@ -28,7 +28,8 @@ type proxyRequestContext struct {
 	modelOverride               string
 	useSpecificEndpoint         bool
 	refreshedCredentialAttempts map[int64]bool
-	portDefaultEndpoint        string
+	portScoped                 bool
+	endpointIndex              int
 }
 
 type endpointAttempt struct {
@@ -88,6 +89,11 @@ func (p *Proxy) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			endpointAttempts = 0
 			continue
 		}
+		if reqCtx.portScoped {
+			reqCtx.endpointIndex = (reqCtx.endpointIndex + 1) % len(reqCtx.endpoints)
+			endpointAttempts = 0
+			continue
+		}
 
 		if endpointAttempts >= 2 && !reqCtx.useSpecificEndpoint {
 			p.rotateEndpoint()
@@ -131,18 +137,18 @@ func (p *Proxy) newProxyRequestContext(w http.ResponseWriter, r *http.Request) (
 		writeInvalidRequestError(w, resolveErr.Error())
 		return nil, resolveErr
 	}
-	if specifiedEndpoint == nil {
-		if defaultName := strings.TrimSpace(r.Header.Get("X-CCN-Port-Endpoint")); defaultName != "" {
-			resolved, err := p.resolver.ResolveEndpointForPort(defaultName)
-			if err != nil {
-				writeInvalidRequestError(w, err.Error())
-				return nil, err
+	useSpecificEndpoint := specifiedEndpoint != nil
+	portScoped := false
+	if !useSpecificEndpoint {
+		if endpointNames, ok := r.Context().Value(portEndpointNamesKey{}).([]string); ok {
+			endpoints = filterEndpointsByName(endpoints, endpointNames)
+			if len(endpoints) == 0 {
+				http.Error(w, "No enabled endpoints configured for this port", http.StatusServiceUnavailable)
+				return nil, errNoEnabledEndpoints
 			}
-			specifiedEndpoint = resolved
+			portScoped = true
 		}
 	}
-
-	useSpecificEndpoint := specifiedEndpoint != nil
 	if useSpecificEndpoint {
 		logger.Debug("[Resolver] 使用指定端点: %s", specifiedEndpoint.Name)
 	}
@@ -159,6 +165,7 @@ func (p *Proxy) newProxyRequestContext(w http.ResponseWriter, r *http.Request) (
 		specifiedEndpoint:           specifiedEndpoint,
 		modelOverride:               modelOverride,
 		useSpecificEndpoint:         useSpecificEndpoint,
+		portScoped:                 portScoped,
 		refreshedCredentialAttempts: make(map[int64]bool),
 	}, nil
 }
@@ -167,7 +174,24 @@ func (p *Proxy) nextEndpointForRequest(reqCtx *proxyRequestContext) config.Endpo
 	if reqCtx.useSpecificEndpoint && reqCtx.specifiedEndpoint != nil {
 		return *reqCtx.specifiedEndpoint
 	}
+	if reqCtx.portScoped && len(reqCtx.endpoints) > 0 {
+		return reqCtx.endpoints[reqCtx.endpointIndex%len(reqCtx.endpoints)]
+	}
 	return p.getCurrentEndpoint()
+}
+
+func filterEndpointsByName(endpoints []config.Endpoint, names []string) []config.Endpoint {
+	allowed := make(map[string]bool, len(names))
+	for _, name := range names {
+		allowed[strings.ToLower(strings.TrimSpace(name))] = true
+	}
+	filtered := make([]config.Endpoint, 0, len(names))
+	for _, endpoint := range endpoints {
+		if allowed[strings.ToLower(strings.TrimSpace(endpoint.Name))] {
+			filtered = append(filtered, endpoint)
+		}
+	}
+	return filtered
 }
 
 func (p *Proxy) runEndpointAttempt(w http.ResponseWriter, reqCtx *proxyRequestContext, attempt *endpointAttempt) attemptResult {

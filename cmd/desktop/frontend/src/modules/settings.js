@@ -390,9 +390,6 @@ function collectPortBindings() {
             throw new Error('端口必须在 1-65535 之间，且必须选择端点');
         }
     }
-    if (new Set(bindings.map(binding => binding.port)).size !== bindings.length) {
-        throw new Error('端口不能重复');
-    }
     return bindings;
 }
 

@@ -30,6 +30,8 @@ type APIResponse struct {
 	Usage Usage `json:"usage"`
 }
 
+type portEndpointNamesKey struct{}
+
 // Proxy represents the proxy server
 type Proxy struct {
 	config            *config.Config
@@ -135,25 +137,27 @@ func (p *Proxy) StartWithMux(customMux *http.ServeMux) error {
 	}
 	p.server = newServer(port, mux)
 	p.servers = []*http.Server{p.server}
+	bindingsByPort := make(map[int][]string)
 	for _, binding := range cfg.GetPortBindings() {
-		boundEndpoint := binding.Endpoint
+		bindingsByPort[binding.Port] = append(bindingsByPort[binding.Port], binding.Endpoint)
+	}
+	for bindingPort, endpointNames := range bindingsByPort {
+		boundEndpointNames := append([]string(nil), endpointNames...)
 		boundMux := http.NewServeMux()
 		boundMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("X-CCN-Endpoint") == "" && r.Header.Get("X-Endpoint-Name") == "" {
-				r.Header.Set("X-CCN-Port-Endpoint", boundEndpoint)
-			}
+			r = r.WithContext(context.WithValue(r.Context(), portEndpointNamesKey{}, boundEndpointNames))
 			muxHandler, _ := mux.Handler(r)
 			muxHandler.ServeHTTP(w, r)
 		})
 		// HandleFunc above delegates all paths, including Web UI routes, to the primary mux.
-		server := newServer(binding.Port, boundMux)
+		server := newServer(bindingPort, boundMux)
 		p.servers = append(p.servers, server)
 		go func(s *http.Server) {
 			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				logger.Warn("listener %s stopped: %v", s.Addr, err)
 			}
 		}(server)
-		logger.Info("ccNexus additional listener on port %d -> endpoint %s", binding.Port, binding.Endpoint)
+		logger.Info("ccNexus additional listener on port %d -> %d endpoints", bindingPort, len(boundEndpointNames))
 	}
 
 	logger.Info("ccNexus starting on port %d", port)
